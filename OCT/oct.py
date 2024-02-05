@@ -23,31 +23,24 @@ class OCTDataset(Dataset):
             self.shape = (400, 640)
 
         # Total number of elements to skip at the beginning and end
-        self.skip_start = 80
-        self.skip_end = 80
+        self.skip_start = 0
+        self.skip_end = 0
         self.total_scans_per_patient = 304
         self.valid_scans_per_patient = self.total_scans_per_patient - self.skip_start - self.skip_end
 
     def load_b_scans(self, patient_number, scan_number):
         folder_path = os.path.join(self.base_path, "OCT", str(patient_number))
         dir_ = os.listdir(folder_path)
-        # Delete files that are in checked_paths
-        # dir_ = [f for f in dir_ if f not in checked_paths]
-        # dir_ = dir_[:1]
-        if os.path.isdir(folder_path):
-            # for f in sorted([int(fn.split(".")[0]) for fn in os.listdir(folder_path)]):            
+        image = None
+        if os.path.isdir(folder_path):    
             i = 0
             for f in sorted([int(fn.split(".")[0]) for fn in dir_]):
                 if i < scan_number:
                     i += 1
                     continue
                 f = str(f) + ".bmp"
-                # checked_paths.append(f)
                 image_path = os.path.join(folder_path, f)
                 image = Image.open(image_path)
-                # yeni eklendi
-                # if image.mode != 'RGB':
-                #     image = image.convert('RGB')
         return np.array(image)
     
     def load_labels(self,patient_number):
@@ -84,6 +77,10 @@ class OCTDataset(Dataset):
             label = self.load_labels(patient_number)
         b_scan = self.load_b_scans(patient_number, scan_number)
 
+        # Ensure b_scan is of a compatible dtype, e.g., uint8
+        if b_scan.dtype != np.uint8:
+            b_scan = b_scan.astype(np.uint8)
+
         # Apply the transformation twice to get two augmented views of the same B-scan
         b_scan_view1 = self.transform(Image.fromarray(b_scan))
         b_scan_view2 = self.transform(Image.fromarray(b_scan))
@@ -96,5 +93,5 @@ class OCTDataset(Dataset):
         if self.label:
             if label != 0:
                 label = 1
-            return (b_scan_view1, b_scan_view2), (1 - label, 1 - label)
+            return (b_scan_view1, b_scan_view2), (1 - label)
         return b_scan_view1, b_scan_view2

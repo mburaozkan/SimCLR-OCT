@@ -5,6 +5,8 @@ import sys
 import argparse
 import time
 import math
+import random
+import numpy as np
 
 import tensorboard_logger as tb_logger
 import torch
@@ -18,12 +20,42 @@ from util import set_optimizer, save_model
 from networks.resnet_big import SupConResNet
 from losses import SupConLoss
 
+from scipy.ndimage import gaussian_filter, map_coordinates
+from PIL import Image
+
 # try:
 #     import apex
 #     from apex import amp, optimizers
 # except ImportError:
 #     pass
 
+def elastic_deformation(image, alpha, sigma, random_state=None):
+    """Elastic deformation of images as described in [Simard2003]."""
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+
+    shape = image.shape  # Shape of the numpy array
+    dx = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode="constant", cval=0) * alpha
+    dy = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode="constant", cval=0) * alpha
+
+    # Create meshgrid for coordinates
+    x, y = np.meshgrid(np.arange(shape[1]), np.arange(shape[0]))
+    indices = np.reshape(y+dy, (-1, 1)), np.reshape(x+dx, (-1, 1))
+
+    # Apply deformation
+    distorted_image = map_coordinates(image, indices, order=1, mode='reflect')
+    return distorted_image
+
+
+def apply_elastic_deformation(img):
+    img_np = np.array(img)
+    deformed_img_np = elastic_deformation(img_np, alpha=100, sigma=10)
+    deformed_img = Image.fromarray(deformed_img_np)
+    # Ensure the output image has the same size as the input
+    if deformed_img.size != img.size:
+        deformed_img = deformed_img.resize(img.size)
+
+    return deformed_img
 
 def parse_option():
     parser = argparse.ArgumentParser('argument for training')
@@ -181,11 +213,12 @@ def set_loader(opt):
         train_dataset = datasets.ImageFolder(root=opt.data_folder,
                                             transform=TwoCropTransform(train_transform))
     elif opt.dataset == 'oct':
-        directory = "/media/mburaozkan/SSD Samsung/OCTA-500/OCTA_3mm"
+        directory = "/app/Data/OCTA_3mm"
 
         train_dataset = OCTDataset(directory=directory,
-                                   transform=oct_transforms,
-                                    patient_numbers=[i for i in range(10301, 10501)],mm=3) # 501'den değiştim
+                                    transform=oct_transforms,
+                                    label=True,
+                                    patient_numbers=[i for i in range(10301, 10312)],mm=3) # 501'den değiştim
     else:
         raise ValueError(opt.dataset)
 
@@ -227,17 +260,21 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     for idx, (images, labels) in enumerate(train_loader):
         data_time.update(time.time() - end)
 
-        images = torch.cat([images[0], images[1]], dim=0)
+        if opt.dataset == 'oct':
+            images = torch.cat(images, dim=0)
+        else:
+            images = torch.cat([images[0], images[1]], dim=0)
+        
         if torch.cuda.is_available():
             images = images.cuda(non_blocking=True)
             labels = labels.cuda(non_blocking=True)
         bsz = labels.shape[0]
-
         # warm-up learning rate
         warmup_learning_rate(opt, epoch, idx, len(train_loader), optimizer)
 
         # compute loss
         features = model(images)
+        print(features.shape)
         f1, f2 = torch.split(features, [bsz, bsz], dim=0)
         features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
         if opt.method == 'SupCon':
@@ -247,7 +284,7 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
         else:
             raise ValueError('contrastive method not supported: {}'.
                              format(opt.method))
-
+        print("a")
         # update metric
         losses.update(loss.item(), bsz)
 
@@ -289,6 +326,7 @@ def main():
 
     # training routine
     for epoch in range(1, opt.epochs + 1):
+        print(epoch)
         adjust_learning_rate(opt, optimizer, epoch)
 
         # train for one epoch
