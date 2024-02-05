@@ -8,17 +8,18 @@ import math
 import torch
 import torch.backends.cudnn as cudnn
 
+from OCT.oct import OCTDataset
 from main_ce import set_loader
 from util import AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate, accuracy
 from util import set_optimizer
 from networks.resnet_big import SupConResNet, LinearClassifier
 
-try:
-    import apex
-    from apex import amp, optimizers
-except ImportError:
-    pass
+# try:
+#     import apex
+#     from apex import amp, optimizers
+# except ImportError:
+#     pass
 
 
 def parse_option():
@@ -50,7 +51,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'oct'], help='dataset')
 
     # other setting
     parser.add_argument('--cosine', action='store_true',
@@ -94,6 +95,8 @@ def parse_option():
         opt.n_cls = 10
     elif opt.dataset == 'cifar100':
         opt.n_cls = 100
+    elif opt.dataset == 'oct':
+        opt.n_cls = 2
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
 

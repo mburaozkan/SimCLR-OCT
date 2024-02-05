@@ -123,6 +123,9 @@ def set_loader(opt):
     elif opt.dataset == 'cifar100':
         mean = (0.5071, 0.4867, 0.4408)
         std = (0.2675, 0.2565, 0.2761)
+    elif opt.dataset == 'oct':
+        mean = (0.32978319597, 0.32978319597, 0.32978319597)
+        std = (0.10885790758, 0.10885790758, 0.10885790758)
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
     normalize = transforms.Normalize(mean=mean, std=std)
@@ -139,6 +142,17 @@ def set_loader(opt):
         normalize,
     ])
 
+    oct_transforms = transforms.Compose([
+        transforms.RandomRotation(degrees=10),  # Slightly larger rotation
+        transforms.RandomResizedCrop(size=(304, 640), scale=(0.75, 1.0)),  # Adjust the cropping scale
+        transforms.RandomApply([transforms.ColorJitter(brightness=0.2, contrast=0.2)], p=0.3),
+        transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.3),
+        transforms.Lambda(lambda img: apply_elastic_deformation(img) if random.random() < 0.5 else img),
+        transforms.RandomHorizontalFlip(p=0.5),  # Random horizontal flip
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.32978319597], std=[0.10885790758])
+    ])
+    
     if opt.dataset == 'cifar10':
         train_dataset = datasets.CIFAR10(root=opt.data_folder,
                                          transform=train_transform,
@@ -153,6 +167,15 @@ def set_loader(opt):
         val_dataset = datasets.CIFAR100(root=opt.data_folder,
                                         train=False,
                                         transform=val_transform)
+    elif opt.dataset == 'oct':
+        directory = "/media/mburaozkan/SSD Samsung/OCTA-500/OCTA_3mm"
+        # directory = "/home/mustafa/Project-Git/OCTA-500/OCTA_3mm"
+
+        train_dataset = OCTDataset(directory=directory,
+                                   transform=oct_transforms, patient_numbers=[i for i in range(10301, 10401)],mm=3, label=True)
+
+        val_dataset = OCTDataset(directory=directory,
+                                   transform=val_transform, patient_numbers=[i for i in range(10401, 10501)],mm=3, label=True)
     else:
         raise ValueError(opt.dataset)
 

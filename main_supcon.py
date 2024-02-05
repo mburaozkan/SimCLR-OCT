@@ -11,6 +11,7 @@ import torch
 import torch.backends.cudnn as cudnn
 from torchvision import transforms, datasets
 
+from OCT.oct import OCTDataset
 from util import TwoCropTransform, AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate
 from util import set_optimizer, save_model
@@ -53,7 +54,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100', 'path'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'path', 'oct'], help='dataset')
     parser.add_argument('--mean', type=str, help='mean of dataset in path in form of str tuple')
     parser.add_argument('--std', type=str, help='std of dataset in path in form of str tuple')
     parser.add_argument('--data_folder', type=str, default=None, help='path to custom dataset')
@@ -139,6 +140,9 @@ def set_loader(opt):
     elif opt.dataset == 'path':
         mean = eval(opt.mean)
         std = eval(opt.std)
+    elif opt.dataset == 'oct':
+        mean = (0.32978319597, 0.32978319597, 0.32978319597)
+        std = (0.10885790758, 0.10885790758, 0.10885790758)
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
     normalize = transforms.Normalize(mean=mean, std=std)
@@ -154,6 +158,17 @@ def set_loader(opt):
         normalize,
     ])
 
+    oct_transforms = transforms.Compose([
+        transforms.RandomRotation(degrees=10),  # Slightly larger rotation
+        transforms.RandomResizedCrop(size=(304, 640), scale=(0.75, 1.0)),  # Adjust the cropping scale
+        transforms.RandomApply([transforms.ColorJitter(brightness=0.2, contrast=0.2)], p=0.3),
+        transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.3),
+        transforms.Lambda(lambda img: apply_elastic_deformation(img) if random.random() < 0.5 else img),
+        transforms.RandomHorizontalFlip(p=0.5),  # Random horizontal flip
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.32978319597], std=[0.10885790758])
+    ])
+
     if opt.dataset == 'cifar10':
         train_dataset = datasets.CIFAR10(root=opt.data_folder,
                                          transform=TwoCropTransform(train_transform),
@@ -165,6 +180,12 @@ def set_loader(opt):
     elif opt.dataset == 'path':
         train_dataset = datasets.ImageFolder(root=opt.data_folder,
                                             transform=TwoCropTransform(train_transform))
+    elif opt.dataset == 'oct':
+        directory = "/media/mburaozkan/SSD Samsung/OCTA-500/OCTA_3mm"
+
+        train_dataset = OCTDataset(directory=directory,
+                                   transform=oct_transforms,
+                                    patient_numbers=[i for i in range(10301, 10501)],mm=3) # 501'den değiştim
     else:
         raise ValueError(opt.dataset)
 
