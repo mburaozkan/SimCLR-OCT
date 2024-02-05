@@ -29,32 +29,30 @@ from PIL import Image
 # except ImportError:
 #     pass
 
-def elastic_deformation(image, alpha, sigma, random_state=None):
-    """Elastic deformation of images as described in [Simard2003]."""
+def elastic_transform(image, alpha, sigma, random_state=None):
     if random_state is None:
         random_state = np.random.RandomState(None)
 
-    shape = image.shape  # Shape of the numpy array
+    shape = image.shape
+
     dx = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode="constant", cval=0) * alpha
     dy = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode="constant", cval=0) * alpha
 
-    # Create meshgrid for coordinates
     x, y = np.meshgrid(np.arange(shape[1]), np.arange(shape[0]))
     indices = np.reshape(y+dy, (-1, 1)), np.reshape(x+dx, (-1, 1))
+        
 
-    # Apply deformation
     distorted_image = map_coordinates(image, indices, order=1, mode='reflect')
-    return distorted_image
+    return distorted_image.reshape(image.shape)
 
-
-def apply_elastic_deformation(img):
+def apply_elastic_deformation(img, alpha=1, sigma=4):
+    """Apply elastic deformation on the input image."""
     img_np = np.array(img)
-    deformed_img_np = elastic_deformation(img_np, alpha=100, sigma=10)
-    deformed_img = Image.fromarray(deformed_img_np)
-    # Ensure the output image has the same size as the input
+    deformed_img_np = elastic_transform(img_np, alpha, sigma)
+    deformed_img = Image.fromarray(deformed_img_np.astype('uint8'))
+    
     if deformed_img.size != img.size:
         deformed_img = deformed_img.resize(img.size)
-
     return deformed_img
 
 def parse_option():
@@ -192,13 +190,13 @@ def set_loader(opt):
 
     oct_transforms = transforms.Compose([
         transforms.RandomRotation(degrees=10),  # Slightly larger rotation
-        transforms.RandomResizedCrop(size=(304, 640), scale=(0.75, 1.0)),  # Adjust the cropping scale
+        transforms.RandomResizedCrop(size=(640, 304), scale=(0.75, 1.0)),  # Adjust the cropping scale
         transforms.RandomApply([transforms.ColorJitter(brightness=0.2, contrast=0.2)], p=0.3),
         transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.3),
-        transforms.Lambda(lambda img: apply_elastic_deformation(img) if random.random() < 0.5 else img),
+        transforms.Lambda(lambda img: apply_elastic_deformation( img, alpha=608, sigma=24.32) if random.random() < 0.5 else img),
         transforms.RandomHorizontalFlip(p=0.5),  # Random horizontal flip
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.32978319597], std=[0.10885790758])
+        # transforms.Normalize(mean=[0.32978319597], std=[0.10885790758])
     ])
 
     if opt.dataset == 'cifar10':
@@ -274,7 +272,6 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
 
         # compute loss
         features = model(images)
-        print(features.shape)
         f1, f2 = torch.split(features, [bsz, bsz], dim=0)
         features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
         if opt.method == 'SupCon':
@@ -284,7 +281,6 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
         else:
             raise ValueError('contrastive method not supported: {}'.
                              format(opt.method))
-        print("a")
         # update metric
         losses.update(loss.item(), bsz)
 
@@ -326,7 +322,6 @@ def main():
 
     # training routine
     for epoch in range(1, opt.epochs + 1):
-        print(epoch)
         adjust_learning_rate(opt, optimizer, epoch)
 
         # train for one epoch
