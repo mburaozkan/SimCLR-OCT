@@ -147,6 +147,12 @@ def train(train_loader, model, classifier, criterion, optimizer, epoch, opt):
     for idx, (images, labels) in enumerate(train_loader):
         data_time.update(time.time() - end)
 
+        labels = (labels, labels)
+
+        if opt.dataset == 'oct':
+            images = torch.cat(images, dim=0)
+            labels = torch.cat(labels, dim=0)
+            
         images = images.cuda(non_blocking=True)
         labels = labels.cuda(non_blocking=True)
         bsz = labels.shape[0]
@@ -162,7 +168,7 @@ def train(train_loader, model, classifier, criterion, optimizer, epoch, opt):
 
         # update metric
         losses.update(loss.item(), bsz)
-        acc1, acc5 = accuracy(output, labels, topk=(1, 5))
+        acc1, acc5 = accuracy(output, labels, topk=(1, 2))
         top1.update(acc1[0], bsz)
 
         # SGD
@@ -200,6 +206,13 @@ def validate(val_loader, model, classifier, criterion, opt):
     with torch.no_grad():
         end = time.time()
         for idx, (images, labels) in enumerate(val_loader):
+
+            labels = (labels, labels)
+            
+            if opt.dataset == 'oct':
+                images = torch.cat(images, dim=0)
+                labels = torch.cat(labels, dim=0)
+            
             images = images.float().cuda()
             labels = labels.cuda()
             bsz = labels.shape[0]
@@ -210,7 +223,7 @@ def validate(val_loader, model, classifier, criterion, opt):
 
             # update metric
             losses.update(loss.item(), bsz)
-            acc1, acc5 = accuracy(output, labels, topk=(1, 5))
+            acc1, acc5 = accuracy(output, labels, topk=(1, 2))
             top1.update(acc1[0], bsz)
 
             # measure elapsed time

@@ -5,23 +5,54 @@ import sys
 import argparse
 import time
 import math
+import random
+import numpy as np
 
 import tensorboard_logger as tb_logger
 import torch
 import torch.backends.cudnn as cudnn
 from torchvision import transforms, datasets
 
+from OCT.oct import OCTDataset
 from util import AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate, accuracy
 from util import set_optimizer, save_model
 from networks.resnet_big import SupCEResNet
 
-try:
-    import apex
-    from apex import amp, optimizers
-except ImportError:
-    pass
+from scipy.ndimage import gaussian_filter, map_coordinates
+from PIL import Image
 
+# try:
+#     import apex
+#     from apex import amp, optimizers
+# except ImportError:
+#    pass
+
+def elastic_transform(image, alpha, sigma, random_state=None):
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+
+    shape = image.shape
+
+    dx = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode="constant", cval=0) * alpha
+    dy = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma, mode="constant", cval=0) * alpha
+
+    x, y = np.meshgrid(np.arange(shape[1]), np.arange(shape[0]))
+    indices = np.reshape(y+dy, (-1, 1)), np.reshape(x+dx, (-1, 1))
+        
+
+    distorted_image = map_coordinates(image, indices, order=1, mode='reflect')
+    return distorted_image.reshape(image.shape)
+
+def apply_elastic_deformation(img, alpha=1, sigma=4):
+    """Apply elastic deformation on the input image."""
+    img_np = np.array(img)
+    deformed_img_np = elastic_transform(img_np, alpha, sigma)
+    deformed_img = Image.fromarray(deformed_img_np.astype('uint8'))
+    
+    if deformed_img.size != img.size:
+        deformed_img = deformed_img.resize(img.size)
+    return deformed_img
 
 def parse_option():
     parser = argparse.ArgumentParser('argument for training')
@@ -144,7 +175,7 @@ def set_loader(opt):
 
     oct_transforms = transforms.Compose([
         transforms.RandomRotation(degrees=10),  # Slightly larger rotation
-        transforms.RandomResizedCrop(size=(304, 640), scale=(0.75, 1.0)),  # Adjust the cropping scale
+        transforms.RandomResizedCrop(size=(64, 64), scale=(0.75, 1.0)),  # Adjust the cropping scale
         transforms.RandomApply([transforms.ColorJitter(brightness=0.2, contrast=0.2)], p=0.3),
         transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.3),
         transforms.Lambda(lambda img: apply_elastic_deformation(img) if random.random() < 0.5 else img),
@@ -168,14 +199,12 @@ def set_loader(opt):
                                         train=False,
                                         transform=val_transform)
     elif opt.dataset == 'oct':
-        directory = "/media/mburaozkan/SSD Samsung/OCTA-500/OCTA_3mm"
-        # directory = "/home/mustafa/Project-Git/OCTA-500/OCTA_3mm"
+        directory = "/app/Data/OCTA_3mm"
 
         train_dataset = OCTDataset(directory=directory,
-                                   transform=oct_transforms, patient_numbers=[i for i in range(10301, 10401)],mm=3, label=True)
+                                   transform=oct_transforms, patient_numbers=[i for i in range(10301, 10312)],mm=3, label=True)
 
-        val_dataset = OCTDataset(directory=directory,
-                                   transform=val_transform, patient_numbers=[i for i in range(10401, 10501)],mm=3, label=True)
+        val_dataset = train_dataset
     else:
         raise ValueError(opt.dataset)
 
@@ -221,6 +250,11 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     for idx, (images, labels) in enumerate(train_loader):
         data_time.update(time.time() - end)
 
+        
+        if opt.dataset == 'oct':
+            images = torch.cat(images, dim=0)
+            labels = torch.cat(images, dim=0)
+        
         images = images.cuda(non_blocking=True)
         labels = labels.cuda(non_blocking=True)
         bsz = labels.shape[0]

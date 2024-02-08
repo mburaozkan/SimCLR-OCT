@@ -23,8 +23,8 @@ class OCTDataset(Dataset):
             self.shape = (400, 640)
 
         # Total number of elements to skip at the beginning and end
-        self.skip_start = 0
-        self.skip_end = 0
+        self.skip_start = 100
+        self.skip_end = 100
         self.total_scans_per_patient = 304
         self.valid_scans_per_patient = self.total_scans_per_patient - self.skip_start - self.skip_end
 

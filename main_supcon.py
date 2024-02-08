@@ -190,7 +190,7 @@ def set_loader(opt):
 
     oct_transforms = transforms.Compose([
         transforms.RandomRotation(degrees=10),  # Slightly larger rotation
-        transforms.RandomResizedCrop(size=(640, 304), scale=(0.75, 1.0)),  # Adjust the cropping scale
+        transforms.RandomResizedCrop(size=(64, 64), scale=(0.75, 1.0)),  # Adjust the cropping scale
         transforms.RandomApply([transforms.ColorJitter(brightness=0.2, contrast=0.2)], p=0.3),
         transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.3),
         transforms.Lambda(lambda img: apply_elastic_deformation( img, alpha=608, sigma=24.32) if random.random() < 0.5 else img),
