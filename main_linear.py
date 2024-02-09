@@ -15,6 +15,9 @@ from util import adjust_learning_rate, warmup_learning_rate, accuracy
 from util import set_optimizer
 from networks.resnet_big import SupConResNet, LinearClassifier
 
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score, average_precision_score, confusion_matrix
+import numpy as np
+
 # try:
 #     import apex
 #     from apex import amp, optimizers
@@ -96,7 +99,7 @@ def parse_option():
     elif opt.dataset == 'cifar100':
         opt.n_cls = 100
     elif opt.dataset == 'oct':
-        opt.n_cls = 2
+        opt.n_cls = 4
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
 
@@ -193,15 +196,17 @@ def train(train_loader, model, classifier, criterion, optimizer, epoch, opt):
 
     return losses.avg, top1.avg
 
-
 def validate(val_loader, model, classifier, criterion, opt):
-    """validation"""
+    """Validation with additional metrics"""
     model.eval()
     classifier.eval()
 
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
+
+    all_preds = []
+    all_targets = []
 
     with torch.no_grad():
         end = time.time()
@@ -212,7 +217,7 @@ def validate(val_loader, model, classifier, criterion, opt):
             if opt.dataset == 'oct':
                 images = torch.cat(images, dim=0)
                 labels = torch.cat(labels, dim=0)
-            
+
             images = images.float().cuda()
             labels = labels.cuda()
             bsz = labels.shape[0]
@@ -223,8 +228,12 @@ def validate(val_loader, model, classifier, criterion, opt):
 
             # update metric
             losses.update(loss.item(), bsz)
-            acc1, acc5 = accuracy(output, labels, topk=(1, 2))
+            acc1, _ = accuracy(output, labels, topk=(1, 2))
             top1.update(acc1[0], bsz)
+
+            # Collect all predictions and targets to calculate additional metrics
+            all_preds.append(output.cpu().numpy())
+            all_targets.append(labels.cpu().numpy())
 
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -238,8 +247,19 @@ def validate(val_loader, model, classifier, criterion, opt):
                        idx, len(val_loader), batch_time=batch_time,
                        loss=losses, top1=top1))
 
-    print(' * Acc@1 {top1.avg:.3f}'.format(top1=top1))
-    return losses.avg, top1.avg
+    # Concatenate all predictions and targets
+    all_preds = np.concatenate(all_preds, axis=0)
+    all_targets = np.concatenate(all_targets, axis=0)
+
+    # Calculate additional metrics
+    precision = precision_score(all_targets, all_preds.argmax(axis=1), average='macro', zero_division=0)
+    recall = recall_score(all_targets, all_preds.argmax(axis=1), average='macro', zero_division=0)
+    f1 = f1_score(all_targets, all_preds.argmax(axis=1), average='macro', zero_division=0)
+    confusion_mat = confusion_matrix(all_targets, all_preds.argmax(axis=1))
+
+    print(' * Acc@1 {:.3f} Precision: {:.3f}, Recall: {:.3f}, F1: {:.3f}'.format(top1.avg, precision, recall, f1))
+    return losses.avg, top1.avg, precision, recall, f1, confusion_mat
+
 
 
 def main():
@@ -261,7 +281,7 @@ def main():
 
         # train for one epoch
         time1 = time.time()
-        loss, acc = train(train_loader, model, classifier, criterion,
+        loss, acc, precision, recall, f1, roc_auc, pr_auc = train(train_loader, model, classifier, criterion,
                           optimizer, epoch, opt)
         time2 = time.time()
         print('Train epoch {}, total time {:.2f}, accuracy:{:.2f}'.format(

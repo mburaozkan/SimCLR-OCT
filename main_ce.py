@@ -202,9 +202,10 @@ def set_loader(opt):
         directory = "/app/Data/OCTA_3mm"
 
         train_dataset = OCTDataset(directory=directory,
-                                   transform=oct_transforms, patient_numbers=[i for i in range(10301, 10312)],mm=3, label=True)
+                                   transform=oct_transforms, patient_numbers=[i for i in [10301, 10302, 10303, 10304, 10305, 10306, 10307, 10308, 10310, 10312]],mm=3, label=True)
 
-        val_dataset = train_dataset
+        val_dataset = OCTDataset(directory=directory,
+                                   transform=oct_transforms, patient_numbers=[i for i in [10302, 10310, 10311, 10312]],mm=3, label=True)
     else:
         raise ValueError(opt.dataset)
 
@@ -213,8 +214,8 @@ def set_loader(opt):
         train_dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),
         num_workers=opt.num_workers, pin_memory=True, sampler=train_sampler)
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=256, shuffle=False,
-        num_workers=8, pin_memory=True)
+        val_dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),
+        num_workers=opt.num_workers, pin_memory=True, sampler=train_sampler)
 
     return train_loader, val_loader
 

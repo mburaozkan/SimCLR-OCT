@@ -91,7 +91,7 @@ class OCTDataset(Dataset):
             raise ValueError(f"Shape mismatch: {b_scan_view1.shape} vs {b_scan_view2.shape}")
 
         if self.label:
-            if label != 0:
-                label = 1
-            return (b_scan_view1, b_scan_view2), (1 - label)
+            # if label != 0:
+            #     label = 1
+            return (b_scan_view1, b_scan_view2), (label)
         return b_scan_view1, b_scan_view2
